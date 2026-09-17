@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-3.6-flash";
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 // اقتصار القائمة على الصيغ المدعومة رسمياً لـ inlineData
