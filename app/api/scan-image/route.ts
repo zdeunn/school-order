@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
 const GEMINI_MODEL = "gemini-1.5-flash";
-const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB كحد أقصى للصورة
+const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
-// الأنواع المدعومة فقط، لمنع رفع ملفات غير صورية
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+// اقتصار القائمة على الصيغ المدعومة رسمياً لـ inlineData
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-// الأمر الموجّه لـ Gemini لاستخراج قائمة الأدوات المدرسية من الصورة (سواء مطبوعة أو مكتوبة بخط اليد)
 const EXTRACTION_PROMPT = `
 أنت مساعد متخصص في قراءة قوائم الأدوات المدرسية من الصور (سواء كانت مطبوعة أو مكتوبة بخط اليد).
 افحص الصورة المرفقة واستخرج منها كل عنصر/أداة مدرسية مذكورة مع الكمية المطلوبة لكل عنصر.
@@ -16,9 +15,6 @@ const EXTRACTION_PROMPT = `
 - تجاهل أي نص لا يمثل اسم أداة مدرسية (كعناوين، تواريخ، أسماء تلاميذ، أو ملاحظات عامة).
 - استخرج أسماء العناصر كما وردت في الصورة قدر الإمكان (بالعربية أو الفرنسية حسب ما هو مكتوب).
 - إن لم تستطع قراءة أي عنصر بوضوح من الصورة، أعد مصفوفة فارغة.
-
-أعد النتيجة **حصراً** بصيغة JSON مطابقة تماماً لهذا الشكل، بدون أي نص إضافي قبله أو بعده:
-{"items": [{"name": "اسم العنصر", "quantity": 1}]}
 `.trim();
 
 export async function POST(request: Request) {
@@ -49,7 +45,7 @@ export async function POST(request: Request) {
 
     const mimeType = imageFile.type || "image/jpeg";
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
-      return NextResponse.json({ error: "صيغة الصورة غير مدعومة" }, { status: 400 });
+      return NextResponse.json({ error: "صيغة الصورة غير مدعومة. يرجى استخدام JPG, PNG, أو WEBP" }, { status: 400 });
     }
 
     const imageArrayBuffer = await imageFile.arrayBuffer();
@@ -78,8 +74,25 @@ export async function POST(request: Request) {
             },
           ],
           generationConfig: {
-            temperature: 0.2,
+            temperature: 0.1,
             responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                items: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      name: { type: "STRING" },
+                      quantity: { type: "INTEGER" },
+                    },
+                    required: ["name", "quantity"],
+                  },
+                },
+              },
+              required: ["items"],
+            },
           },
         }),
       }
@@ -95,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     const geminiData = await geminiResponse.json();
-    const rawText: string | undefined =
+    let rawText: string | undefined =
       geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) {
@@ -105,6 +118,9 @@ export async function POST(request: Request) {
         { status: 502 }
       );
     }
+
+    // تنظيف النص في حال إرجاع Markdown Code Block
+    rawText = rawText.replace(/```json\s*|```/g, "").trim();
 
     let parsed: unknown;
     try {
@@ -126,7 +142,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // تنظيف وتحقق نهائي من كل عنصر قبل إعادته للواجهة
     const cleanedItems = items
       .filter(
         (item): item is { name: unknown; quantity: unknown } =>
