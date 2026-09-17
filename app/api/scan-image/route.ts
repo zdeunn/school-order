@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.0-flash";
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 // اقتصار القائمة على الصيغ المدعومة رسمياً لـ inlineData
@@ -51,56 +51,72 @@ export async function POST(request: Request) {
     const imageArrayBuffer = await imageFile.arrayBuffer();
     const base64Image = Buffer.from(imageArrayBuffer).toString("base64");
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
+    const geminiRequestBody = JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: EXTRACTION_PROMPT },
             {
-              parts: [
-                { text: EXTRACTION_PROMPT },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Image,
-                  },
-                },
-              ],
+              inline_data: {
+                mime_type: mimeType,
+                data: base64Image,
+              },
             },
           ],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                items: {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      name: { type: "STRING" },
-                      quantity: { type: "INTEGER" },
-                    },
-                    required: ["name", "quantity"],
-                  },
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            items: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  name: { type: "STRING" },
+                  quantity: { type: "INTEGER" },
                 },
+                required: ["name", "quantity"],
               },
-              required: ["items"],
             },
           },
-        }),
-      }
-    );
+          required: ["items"],
+        },
+      },
+    });
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error("Gemini API Error:", geminiResponse.status, errorText);
+    const MAX_RETRIES = 2;
+    let geminiResponse: Response | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: geminiRequestBody,
+        }
+      );
+
+      // 503 (ServiceUnavailable) و 429 (تجاوز الحد) غالباً مؤقتة، نعيد المحاولة
+      if (geminiResponse.status !== 503 && geminiResponse.status !== 429) {
+        break;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+
+    if (!geminiResponse || !geminiResponse.ok) {
+      const errorText = geminiResponse ? await geminiResponse.text() : "no response";
+      console.error("Gemini API Error:", geminiResponse?.status, errorText);
       return NextResponse.json(
         { error: "تعذر الاتصال بخدمة التعرف على الصور، حاول لاحقاً" },
         { status: 502 }
