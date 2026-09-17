@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-1.5-flash";
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB كحد أقصى للصورة
 
 // الأنواع المدعومة فقط، لمنع رفع ملفات غير صورية
