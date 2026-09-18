@@ -141,6 +141,13 @@ export default function CustomListOrderPage() {
     }
   }, [items]);
 
+  // إخفاء رسالة الحالة تلقائياً بعد مدة قصيرة (كإشعار عابر)
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = setTimeout(() => setStatusMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [statusMessage]);
+
   // تدوير جمل الانتظار أثناء تحليل الصورة
   useEffect(() => {
     if (!isScanning) {
@@ -410,13 +417,16 @@ export default function CustomListOrderPage() {
           </p>
         </div>
 
-        {/* رسائل التنبيه والنجاح */}
+        {/* رسائل التنبيه والنجاح - تظهر كإشعار ثابت فوق الصفحة بغض النظر عن مكان التمرير */}
         {statusMessage && (
-          <div className={`p-4 rounded-2xl flex items-center gap-3 shadow-sm ${
+          <div className={`fixed top-4 inset-x-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-md z-[100] p-4 rounded-2xl flex items-center gap-3 shadow-lg ${
             statusMessage.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-rose-50 text-rose-800 border border-rose-200"
           }`}>
             {statusMessage.type === "success" ? <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" /> : <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />}
-            <p className="text-xs sm:text-sm font-medium">{statusMessage.text}</p>
+            <p className="text-xs sm:text-sm font-medium flex-1">{statusMessage.text}</p>
+            <button type="button" onClick={() => setStatusMessage(null)} className="shrink-0 opacity-60 hover:opacity-100">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
