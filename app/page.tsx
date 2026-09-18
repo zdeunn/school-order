@@ -118,6 +118,7 @@ export default function CustomListOrderPage() {
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
   const itemInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(null);
+  const [pendingPresetLevel, setPendingPresetLevel] = useState<string | null>(null);
 
   // استرجاع القائمة المحفوظة محلياً عند فتح الصفحة (لحمايتها من الفقدان عند التحديث بالخطأ)
   useEffect(() => {
@@ -183,14 +184,39 @@ export default function CustomListOrderPage() {
     if (!level) return;
 
     if (items.length > 0) {
-      const confirmed = window.confirm(
-        "لديك عناصر في القائمة الحالية. هل تريد استبدالها بالقائمة الجاهزة المختارة؟"
-      );
-      if (!confirmed) return;
+      // نسأل المستخدم: دمج القائمتين أم استبدال القائمة الحالية بالكامل
+      setPendingPresetLevel(levelKey);
+      return;
     }
 
-    setItems(level.items.map((i) => ({ name: i.item, quantity: i.quantity })));
+    applyPresetItems(levelKey, "replace");
+  };
 
+  // تطبيق القائمة الجاهزة: دمج (جمع كميات العناصر المشتركة) أو استبدال كامل
+  const applyPresetItems = (levelKey: string, mode: "merge" | "replace") => {
+    const level = PREMADE_DATA[levelKey];
+    if (!level) return;
+
+    const incoming = level.items.map((i) => ({ name: i.item, quantity: i.quantity }));
+
+    if (mode === "merge") {
+      setItems((prev) => {
+        const merged = [...prev];
+        incoming.forEach((inc) => {
+          const idx = merged.findIndex((m) => m.name.trim() === inc.name.trim());
+          if (idx !== -1) {
+            merged[idx] = { ...merged[idx], quantity: merged[idx].quantity + inc.quantity };
+          } else {
+            merged.push({ ...inc });
+          }
+        });
+        return merged;
+      });
+    } else {
+      setItems(incoming);
+    }
+
+    setPendingPresetLevel(null);
     setTimeout(() => {
       reviewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
@@ -727,6 +753,40 @@ export default function CustomListOrderPage() {
           </div>
 
         </form>
+
+        {/* نافذة السؤال عن دمج القائمة الجاهزة الجديدة أو استبدال القائمة الحالية بها */}
+        {pendingPresetLevel && (
+          <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-5 max-w-sm w-full space-y-4 text-center shadow-xl">
+              <p className="text-sm font-semibold text-slate-800">
+                لديك عناصر في القائمة الحالية. ماذا تريد أن تفعل بالقائمة الجاهزة الجديدة؟
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyPresetItems(pendingPresetLevel, "merge")}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs sm:text-sm"
+                >
+                  دمج القائمتين (جمع العناصر المشتركة)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPresetItems(pendingPresetLevel, "replace")}
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-2.5 rounded-xl text-xs sm:text-sm"
+                >
+                  استبدال القائمة الحالية بالكامل
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingPresetLevel(null)}
+                  className="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-xs sm:text-sm"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
