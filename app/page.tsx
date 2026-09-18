@@ -114,6 +114,7 @@ export default function CustomListOrderPage() {
 
   const reviewSectionRef = useRef<HTMLDivElement | null>(null);
   const newItemNameRef = useRef<HTMLInputElement | null>(null);
+  const submitButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // استرجاع القائمة المحفوظة محلياً عند فتح الصفحة (لحمايتها من الفقدان عند التحديث بالخطأ)
   useEffect(() => {
@@ -279,6 +280,13 @@ export default function CustomListOrderPage() {
   const scrollFieldIntoView = (e: React.FocusEvent<HTMLElement>) => {
     const target = e.target;
     setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+  };
+
+  // حقل العنوان هو الأخير قبل زر الإرسال، لذا نُظهر الزر معه فوق لوحة المفاتيح
+  const scrollLocationAndSubmitIntoView = (e: React.FocusEvent<HTMLElement>) => {
+    setTimeout(() => {
+      submitButtonRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
   };
 
   const handleClearAllItems = () => {
@@ -625,7 +633,7 @@ export default function CustomListOrderPage() {
                   placeholder="الولاية، البلدية، والحي"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  onFocus={scrollFieldIntoView}
+                  onFocus={scrollLocationAndSubmitIntoView}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -633,6 +641,7 @@ export default function CustomListOrderPage() {
 
             {/* زر التأكيد والإرسال النهائي */}
             <button
+              ref={submitButtonRef}
               type="submit"
               disabled={isSubmitting}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 text-sm sm:text-base mt-4 disabled:bg-slate-300"
