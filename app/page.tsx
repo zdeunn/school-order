@@ -17,7 +17,8 @@ import {
   User,
   Phone,
   FileText,
-  ListCheck
+  ListCheck,
+  Plus
 } from "lucide-react";
 import productsData from "../data/products.json";
 
@@ -115,6 +116,8 @@ export default function CustomListOrderPage() {
   const reviewSectionRef = useRef<HTMLDivElement | null>(null);
   const newItemNameRef = useRef<HTMLInputElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
+  const itemInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(null);
 
   // استرجاع القائمة المحفوظة محلياً عند فتح الصفحة (لحمايتها من الفقدان عند التحديث بالخطأ)
   useEffect(() => {
@@ -158,6 +161,14 @@ export default function CustomListOrderPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream]);
+
+  // التركيز التلقائي على الحقل الجديد بعد إضافته وسط القائمة
+  useEffect(() => {
+    if (pendingFocusIndex !== null) {
+      itemInputRefs.current[pendingFocusIndex]?.focus();
+      setPendingFocusIndex(null);
+    }
+  }, [items, pendingFocusIndex]);
 
   // اختيار السنة لتنزيل أدواتها تلقائياً والتمرير نحو قسم المراجعة
   const handleSelectYear = (levelKey: string) => {
@@ -297,6 +308,26 @@ export default function CustomListOrderPage() {
 
   const handleItemNameChange = (index: number, newName: string) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, name: newName } : it)));
+  };
+
+  // إضافة عنصر جديد فارغ مباشرة تحت العنصر الحالي عند الضغط على Enter/استمرار في لوحة المفاتيح
+  const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setItems((prev) => {
+        const updated = [...prev];
+        updated.splice(index + 1, 0, { name: "", quantity: 1 });
+        return updated;
+      });
+      setPendingFocusIndex(index + 1);
+    }
+  };
+
+  // إضافة عنصر جديد فارغ في نهاية القائمة عبر أيقونة "+"
+  const handleAddEmptyItem = () => {
+    const newIndex = items.length;
+    setItems((prev) => [...prev, { name: "", quantity: 1 }]);
+    setPendingFocusIndex(newIndex);
   };
 
   const handleQuantityChange = (index: number, newQty: number) => {
@@ -490,15 +521,24 @@ export default function CustomListOrderPage() {
                 <ListCheck className="w-5 h-5 text-indigo-600" />
                 <span className="font-bold text-base sm:text-lg">مراجعة وتعديل قائمة المنتجات</span>
               </div>
-              {items.length > 0 && (
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={handleClearAllItems}
-                  className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1"
+                  onClick={handleAddEmptyItem}
+                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> تفريغ الكل
+                  <Plus className="w-3.5 h-3.5" /> إضافة منتج
                 </button>
-              )}
+                {items.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllItems}
+                    className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> تفريغ الكل
+                  </button>
+                )}
+              </div>
             </div>
 
             {items.length > 0 && (
@@ -513,9 +553,11 @@ export default function CustomListOrderPage() {
                 <div key={index}>
                   <div className="flex gap-2 items-center">
                     <input
+                      ref={(el) => { itemInputRefs.current[index] = el; }}
                       type="text"
                       value={item.name}
                       onChange={(e) => handleItemNameChange(index, e.target.value)}
+                      onKeyDown={(e) => handleItemKeyDown(e, index)}
                       className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden shrink-0">
