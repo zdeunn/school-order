@@ -265,6 +265,14 @@ export default function CustomListOrderPage() {
         return;
       }
 
+      // لا نسمح بالإضافة إذا كان هناك عنصر آخر في القائمة لم يُستكمل اسمه بعد
+      const emptyIndex = items.findIndex((it) => !it.name.trim());
+      if (emptyIndex !== -1) {
+        itemInputRefs.current[emptyIndex]?.focus();
+        setStatusMessage({ type: "error", text: "يرجى إكمال اسم المنتج الحالي قبل إضافة منتج جديد" });
+        return;
+      }
+
       const qty = newItemQty === "" || newItemQty < 1 ? 1 : Number(newItemQty);
       setItems((prev) => [...prev, { name: newItemName.trim(), quantity: qty }]);
       setNewItemName("");
@@ -314,6 +322,9 @@ export default function CustomListOrderPage() {
   const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      // لا نسمح بإضافة عنصر جديد قبل استكمال اسم العنصر الحالي
+      if (!items[index].name.trim()) return;
+
       setItems((prev) => {
         const updated = [...prev];
         updated.splice(index + 1, 0, { name: "", quantity: 1 });
@@ -325,6 +336,13 @@ export default function CustomListOrderPage() {
 
   // إضافة عنصر جديد فارغ في بداية القائمة (أعلى العناصر الحالية) عبر أيقونة "+"
   const handleAddEmptyItem = () => {
+    const emptyIndex = items.findIndex((it) => !it.name.trim());
+    if (emptyIndex !== -1) {
+      // يوجد بالفعل عنصر لم يُستكمل اسمه، نوجّه التركيز إليه بدل إضافة عنصر جديد
+      itemInputRefs.current[emptyIndex]?.focus();
+      setStatusMessage({ type: "error", text: "يرجى إكمال اسم المنتج الحالي قبل إضافة منتج جديد" });
+      return;
+    }
     setItems((prev) => [{ name: "", quantity: 1 }, ...prev]);
     setPendingFocusIndex(0);
   };
