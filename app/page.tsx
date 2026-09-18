@@ -351,6 +351,16 @@ export default function CustomListOrderPage() {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, name: newName } : it)));
   };
 
+  // إخفاء العنصر تلقائياً إن بقي فارغ الاسم عند الانتقال (focus) إلى عنصر آخر
+  const handleItemBlur = (index: number) => {
+    setItems((prev) => {
+      if (prev[index] && !prev[index].name.trim()) {
+        return prev.filter((_, i) => i !== index);
+      }
+      return prev;
+    });
+  };
+
   // إضافة عنصر جديد فارغ مباشرة تحت العنصر الحالي عند الضغط على Enter/استمرار في لوحة المفاتيح
   const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key === "Enter") {
@@ -388,7 +398,12 @@ export default function CustomListOrderPage() {
   // إرسال الطلب النهائي
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) {
+
+    // إزالة أي عناصر فارغة الاسم قبل التحقق والإرسال (حماية إضافية من خطأ 400)
+    const cleanItems = items.filter((it) => it.name.trim());
+    if (cleanItems.length !== items.length) setItems(cleanItems);
+
+    if (cleanItems.length === 0) {
       setStatusMessage({ type: "error", text: "يرجى إضافة عنصر واحد على الأقل للقائمة" });
       return;
     }
@@ -407,7 +422,7 @@ export default function CustomListOrderPage() {
       const res = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, phone, location, notes, items }),
+        body: JSON.stringify({ fullName, phone, location, notes, items: cleanItems }),
       });
 
       const data = await res.json();
@@ -600,6 +615,7 @@ export default function CustomListOrderPage() {
                       value={item.name}
                       onChange={(e) => handleItemNameChange(index, e.target.value)}
                       onKeyDown={(e) => handleItemKeyDown(e, index)}
+                      onBlur={() => handleItemBlur(index)}
                       className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden shrink-0">
