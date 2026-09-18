@@ -74,9 +74,16 @@ Object.values(PREMADE_PHASES).forEach((years) => {
 });
 
 interface OrderItem {
+  id: string;
   name: string;
   quantity: number;
 }
+
+// توليد معرف فريد لكل عنصر (بدل الاعتماد على index الذي يتغيّر عند الحذف/الإضافة)
+const createId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `item_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
 export default function CustomListOrderPage() {
   // حالات التحكم في القوائم الجاهزة
@@ -92,7 +99,7 @@ export default function CustomListOrderPage() {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQty, setNewItemQty] = useState<number | "">(1);
-  const [itemPendingDelete, setItemPendingDelete] = useState<number | null>(null);
+  const [itemPendingDelete, setItemPendingDelete] = useState<string | null>(null);
 
   // حالات معلومات التوصيل والملاحظات
   const [fullName, setFullName] = useState("");
@@ -116,8 +123,9 @@ export default function CustomListOrderPage() {
   const reviewSectionRef = useRef<HTMLDivElement | null>(null);
   const newItemNameRef = useRef<HTMLInputElement | null>(null);
   const submitButtonRef = useRef<HTMLButtonElement | null>(null);
-  const itemInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(null);
+  // خريطة id -> عنصر input، بدل مصفوفة مبنية على index (تتغيّر مواقعها عند الحذف/الإضافة)
+  const itemInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [pendingPresetLevel, setPendingPresetLevel] = useState<string | null>(null);
 
   // استرجاع القائمة المحفوظة محلياً عند فتح الصفحة (لحمايتها من الفقدان عند التحديث بالخطأ)
@@ -126,7 +134,15 @@ export default function CustomListOrderPage() {
       const saved = localStorage.getItem("school_order_items");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) setItems(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // توافق مع بيانات قديمة محفوظة بلا id
+          const withIds = parsed.map((it: Partial<OrderItem>) => ({
+            id: it.id || createId(),
+            name: it.name ?? "",
+            quantity: it.quantity ?? 1,
+          }));
+          setItems(withIds);
+        }
       }
     } catch {
       // تجاهل أي خطأ في القراءة من التخزين المحلي
@@ -170,13 +186,13 @@ export default function CustomListOrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream]);
 
-  // التركيز التلقائي على الحقل الجديد بعد إضافته وسط القائمة
+  // التركيز التلقائي على الحقل الجديد بعد إضافته وسط القائمة (بالاعتماد على id ثابت)
   useEffect(() => {
-    if (pendingFocusIndex !== null) {
-      itemInputRefs.current[pendingFocusIndex]?.focus();
-      setPendingFocusIndex(null);
+    if (pendingFocusId !== null) {
+      itemInputRefs.current.get(pendingFocusId)?.focus();
+      setPendingFocusId(null);
     }
-  }, [items, pendingFocusIndex]);
+  }, [items, pendingFocusId]);
 
   // اختيار السنة لتنزيل أدواتها تلقائياً والتمرير نحو قسم المراجعة
   const handleSelectYear = (levelKey: string) => {
@@ -197,7 +213,7 @@ export default function CustomListOrderPage() {
     const level = PREMADE_DATA[levelKey];
     if (!level) return;
 
-    const incoming = level.items.map((i) => ({ name: i.item, quantity: i.quantity }));
+    const incoming = level.items.map((i) => ({ id: createId(), name: i.item, quantity: i.quantity }));
 
     if (mode === "merge") {
       setItems((prev) => {
@@ -273,7 +289,12 @@ export default function CustomListOrderPage() {
         const data = await res.json();
 
         if (res.ok && data.items) {
-          setItems((prev) => [...prev, ...data.items]);
+          const scannedItems: OrderItem[] = data.items.map((it: { name: string; quantity: number }) => ({
+            id: createId(),
+            name: it.name,
+            quantity: it.quantity,
+          }));
+          setItems((prev) => [...prev, ...scannedItems]);
           setStatusMessage({ type: "success", text: "تم قراءة القائمة وتنزيل العناصر بنجاح!" });
           setTimeout(() => {
             reviewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -281,8 +302,9 @@ export default function CustomListOrderPage() {
         } else {
           throw new Error(data.error || "فشل التعرف على صورة القائمة");
         }
-      } catch (err: any) {
-        setStatusMessage({ type: "error", text: err.message || "حدث خطأ أثناء قراءة الصورة" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "حدث خطأ أثناء قراءة الصورة";
+        setStatusMessage({ type: "error", text: message });
       } finally {
         setIsScanning(false);
       }
@@ -299,15 +321,15 @@ export default function CustomListOrderPage() {
       }
 
       // لا نسمح بالإضافة إذا كان هناك عنصر آخر في القائمة لم يُستكمل اسمه بعد
-      const emptyIndex = items.findIndex((it) => !it.name.trim());
-      if (emptyIndex !== -1) {
-        itemInputRefs.current[emptyIndex]?.focus();
+      const emptyItem = items.find((it) => !it.name.trim());
+      if (emptyItem) {
+        itemInputRefs.current.get(emptyItem.id)?.focus();
         setStatusMessage({ type: "error", text: "يرجى إكمال اسم المنتج الحالي قبل إضافة منتج جديد" });
         return;
       }
 
       const qty = newItemQty === "" || newItemQty < 1 ? 1 : Number(newItemQty);
-      setItems((prev) => [...prev, { name: newItemName.trim(), quantity: qty }]);
+      setItems((prev) => [...prev, { id: createId(), name: newItemName.trim(), quantity: qty }]);
       setNewItemName("");
       setNewItemQty(1);
       // إبقاء التركيز داخل الحقل لمنع القفز التلقائي للحقل التالي في الهاتف
@@ -315,14 +337,15 @@ export default function CustomListOrderPage() {
     }
   };
 
-  // تعديل عناصر القائمة (بأسلوب immutable آمن مع React)
-  const handleRequestRemoveItem = (index: number) => {
-    setItemPendingDelete(index);
+  // تعديل عناصر القائمة (بأسلوب immutable آمن مع React، بالاعتماد على id ثابت لكل عنصر)
+  const handleRequestRemoveItem = (id: string) => {
+    setItemPendingDelete(id);
   };
 
   const confirmRemoveItem = () => {
     if (itemPendingDelete === null) return;
-    setItems((prev) => prev.filter((_, i) => i !== itemPendingDelete));
+    setItems((prev) => prev.filter((it) => it.id !== itemPendingDelete));
+    itemInputRefs.current.delete(itemPendingDelete);
     setItemPendingDelete(null);
   };
 
@@ -347,52 +370,59 @@ export default function CustomListOrderPage() {
     if (confirmed) setItems([]);
   };
 
-  const handleItemNameChange = (index: number, newName: string) => {
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, name: newName } : it)));
+  const handleItemNameChange = (id: string, newName: string) => {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, name: newName } : it)));
   };
 
   // إخفاء العنصر تلقائياً إن بقي فارغ الاسم عند الانتقال (focus) إلى عنصر آخر
-  const handleItemBlur = (index: number) => {
+  const handleItemBlur = (id: string) => {
     setItems((prev) => {
-      if (prev[index] && !prev[index].name.trim()) {
-        return prev.filter((_, i) => i !== index);
+      const target = prev.find((it) => it.id === id);
+      if (target && !target.name.trim()) {
+        // إن كان هذا العنصر هو نفسه المطلوب حذفه بتأكيد، نلغي التأكيد المعلّق لتفادي حذف عنصر آخر لاحقاً
+        setItemPendingDelete((pending) => (pending === id ? null : pending));
+        itemInputRefs.current.delete(id);
+        return prev.filter((it) => it.id !== id);
       }
       return prev;
     });
   };
 
   // إضافة عنصر جديد فارغ مباشرة تحت العنصر الحالي عند الضغط على Enter/استمرار في لوحة المفاتيح
-  const handleItemKeyDown = (e: React.KeyboardEvent, index: number) => {
+  const handleItemKeyDown = (e: React.KeyboardEvent, id: string) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      // لا نسمح بإضافة عنصر جديد قبل استكمال اسم العنصر الحالي
-      if (!items[index].name.trim()) return;
+      const currentIndex = items.findIndex((it) => it.id === id);
+      if (currentIndex === -1 || !items[currentIndex].name.trim()) return;
 
+      const newItem: OrderItem = { id: createId(), name: "", quantity: 1 };
       setItems((prev) => {
+        const idx = prev.findIndex((it) => it.id === id);
         const updated = [...prev];
-        updated.splice(index + 1, 0, { name: "", quantity: 1 });
+        updated.splice(idx + 1, 0, newItem);
         return updated;
       });
-      setPendingFocusIndex(index + 1);
+      setPendingFocusId(newItem.id);
     }
   };
 
   // إضافة عنصر جديد فارغ في بداية القائمة (أعلى العناصر الحالية) عبر أيقونة "+"
   const handleAddEmptyItem = () => {
-    const emptyIndex = items.findIndex((it) => !it.name.trim());
-    if (emptyIndex !== -1) {
+    const emptyItem = items.find((it) => !it.name.trim());
+    if (emptyItem) {
       // يوجد بالفعل عنصر لم يُستكمل اسمه، نوجّه التركيز إليه بدل إضافة عنصر جديد
-      itemInputRefs.current[emptyIndex]?.focus();
+      itemInputRefs.current.get(emptyItem.id)?.focus();
       setStatusMessage({ type: "error", text: "يرجى إكمال اسم المنتج الحالي قبل إضافة منتج جديد" });
       return;
     }
-    setItems((prev) => [{ name: "", quantity: 1 }, ...prev]);
-    setPendingFocusIndex(0);
+    const newItem: OrderItem = { id: createId(), name: "", quantity: 1 };
+    setItems((prev) => [newItem, ...prev]);
+    setPendingFocusId(newItem.id);
   };
 
-  const handleQuantityChange = (index: number, newQty: number) => {
+  const handleQuantityChange = (id: string, newQty: number) => {
     if (newQty < 1) return;
-    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, quantity: newQty } : it)));
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, quantity: newQty } : it)));
   };
 
   // إرسال الطلب النهائي
@@ -437,8 +467,9 @@ export default function CustomListOrderPage() {
       } else {
         throw new Error(data.error || "حدث خطأ أثناء إرسال الطلب");
       }
-    } catch (err: any) {
-      setStatusMessage({ type: "error", text: err.message || "فشل الاتصال بالسيرفر" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "فشل الاتصال بالسيرفر";
+      setStatusMessage({ type: "error", text: message });
     } finally {
       setIsSubmitting(false);
     }
@@ -606,30 +637,33 @@ export default function CustomListOrderPage() {
 
             <div className="space-y-2">
               {/* عناصر القائمة */}
-              {items.map((item, index) => (
-                <div key={index}>
+              {items.map((item) => (
+                <div key={item.id}>
                   <div className="flex gap-2 items-center">
                     <input
-                      ref={(el) => { itemInputRefs.current[index] = el; }}
+                      ref={(el) => {
+                        if (el) itemInputRefs.current.set(item.id, el);
+                        else itemInputRefs.current.delete(item.id);
+                      }}
                       type="text"
                       value={item.name}
-                      onChange={(e) => handleItemNameChange(index, e.target.value)}
-                      onKeyDown={(e) => handleItemKeyDown(e, index)}
-                      onBlur={() => handleItemBlur(index)}
+                      onChange={(e) => handleItemNameChange(item.id, e.target.value)}
+                      onKeyDown={(e) => handleItemKeyDown(e, item.id)}
+                      onBlur={() => handleItemBlur(item.id)}
                       className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                     <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden shrink-0">
-                      <button type="button" onClick={() => handleQuantityChange(index, item.quantity - 1)} className="px-2 py-1 text-slate-500 hover:bg-slate-200">-</button>
+                      <button type="button" onClick={() => handleQuantityChange(item.id, item.quantity - 1)} className="px-2 py-1 text-slate-500 hover:bg-slate-200">-</button>
                       <span className="px-2.5 text-xs font-bold">{item.quantity}</span>
-                      <button type="button" onClick={() => handleQuantityChange(index, item.quantity + 1)} className="px-2 py-1 text-slate-500 hover:bg-slate-200">+</button>
+                      <button type="button" onClick={() => handleQuantityChange(item.id, item.quantity + 1)} className="px-2 py-1 text-slate-500 hover:bg-slate-200">+</button>
                     </div>
-                    <button type="button" onClick={() => handleRequestRemoveItem(index)} className="text-rose-500 hover:text-rose-700 p-2">
+                    <button type="button" onClick={() => handleRequestRemoveItem(item.id)} className="text-rose-500 hover:text-rose-700 p-2">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
 
                   {/* تأكيد حذف هذا العنصر بالذات، يظهر مباشرة تحته */}
-                  {itemPendingDelete === index && (
+                  {itemPendingDelete === item.id && (
                     <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 mt-1.5">
                       <span className="text-[11px] font-bold text-rose-700">
                         حذف &quot;{item.name}&quot;؟
