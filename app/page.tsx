@@ -103,7 +103,17 @@ export default function CustomListOrderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // جمل الانتظار المتغيرة أثناء تحليل الصورة بالذكاء الاصطناعي
+  const SCAN_MESSAGES = [
+    "جار التعامل مع الصورة بالذكاء الاصطناعي...",
+    "جار قراءة العناصر واحداً تلو الآخر...",
+    "لم يتبق الكثير، اقتربنا من الانتهاء...",
+    "جار تجهيز آخر عنصر في القائمة...",
+  ];
+  const [scanMsgIndex, setScanMsgIndex] = useState(0);
+
   const reviewSectionRef = useRef<HTMLDivElement | null>(null);
+  const newItemNameRef = useRef<HTMLInputElement | null>(null);
 
   // استرجاع القائمة المحفوظة محلياً عند فتح الصفحة (لحمايتها من الفقدان عند التحديث بالخطأ)
   useEffect(() => {
@@ -126,6 +136,19 @@ export default function CustomListOrderPage() {
       // تجاهل أي خطأ في الكتابة على التخزين المحلي
     }
   }, [items]);
+
+  // تدوير جمل الانتظار أثناء تحليل الصورة
+  useEffect(() => {
+    if (!isScanning) {
+      setScanMsgIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setScanMsgIndex((prev) => (prev + 1) % SCAN_MESSAGES.length);
+    }, 1800);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScanning]);
 
   // إيقاف الكاميرا تلقائياً إن غادر المستخدم الصفحة أو المكوّن أثناء تشغيلها
   useEffect(() => {
@@ -207,6 +230,9 @@ export default function CustomListOrderPage() {
         if (res.ok && data.items) {
           setItems((prev) => [...prev, ...data.items]);
           setStatusMessage({ type: "success", text: "تم قراءة القائمة وتنزيل العناصر بنجاح!" });
+          setTimeout(() => {
+            reviewSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 100);
         } else {
           throw new Error(data.error || "فشل التعرف على صورة القائمة");
         }
@@ -222,12 +248,17 @@ export default function CustomListOrderPage() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!newItemName.trim()) return;
+      if (!newItemName.trim()) {
+        newItemNameRef.current?.focus();
+        return;
+      }
 
       const qty = newItemQty === "" || newItemQty < 1 ? 1 : Number(newItemQty);
       setItems((prev) => [...prev, { name: newItemName.trim(), quantity: qty }]);
       setNewItemName("");
       setNewItemQty(1);
+      // إبقاء التركيز داخل الحقل لمنع القفز التلقائي للحقل التالي في الهاتف
+      setTimeout(() => newItemNameRef.current?.focus(), 0);
     }
   };
 
@@ -243,6 +274,12 @@ export default function CustomListOrderPage() {
   };
 
   const cancelRemoveItem = () => setItemPendingDelete(null);
+
+  // إظهار الحقل فوق لوحة مفاتيح الهاتف عند التركيز عليه
+  const scrollFieldIntoView = (e: React.FocusEvent<HTMLElement>) => {
+    const target = e.target;
+    setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+  };
 
   const handleClearAllItems = () => {
     if (items.length === 0) return;
@@ -412,27 +449,27 @@ export default function CustomListOrderPage() {
                   <Camera className="w-7 h-7 text-indigo-600" />
                 )}
                 <span className="text-xs sm:text-sm font-bold text-slate-800">
-                  {isScanning ? "جاري التعرف على خط اليد بالذكاء الاصطناعي..." : "التقاط صورة القائمة بالكاميرا فوراً"}
+                  {isScanning ? SCAN_MESSAGES[scanMsgIndex] : "التقاط صورة القائمة بالكاميرا فوراً"}
                 </span>
               </button>
             ) : (
-              <div className="space-y-3">
-                <div className="relative rounded-2xl overflow-hidden bg-black aspect-video flex items-center justify-center">
+              <div className="fixed inset-0 z-50 bg-black flex flex-col">
+                <div className="relative flex-1 overflow-hidden">
                   <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                   <button
                     type="button"
                     onClick={stopCamera}
-                    className="absolute top-3 left-3 bg-slate-900/80 text-white p-2 rounded-full hover:bg-slate-900"
+                    className="absolute top-4 left-4 bg-slate-900/80 text-white p-2.5 rounded-full hover:bg-slate-900"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
                 <button
                   type="button"
                   onClick={captureAndScan}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs sm:text-sm"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 flex items-center justify-center gap-2 text-sm sm:text-base shrink-0"
                 >
-                  <Camera className="w-4 h-4" /> قراءة الصورة الملتقتة
+                  <Camera className="w-5 h-5" /> قراءة الصورة الملتقتة
                 </button>
               </div>
             )}
@@ -505,6 +542,7 @@ export default function CustomListOrderPage() {
               {/* حقل الإضافة التلقائي بالـ Enter */}
               <div className="flex gap-2 items-center pt-1">
                 <input
+                  ref={newItemNameRef}
                   type="text"
                   placeholder="اكتب اسم المنتج واضغط Enter..."
                   value={newItemName}
@@ -540,6 +578,7 @@ export default function CustomListOrderPage() {
                   placeholder="تفضيلات الماركات، الدرجات، أو أي شروط خاصة..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  onFocus={scrollFieldIntoView}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16"
                 />
               </div>
@@ -555,6 +594,7 @@ export default function CustomListOrderPage() {
                     placeholder="محمد علي"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
+                    onFocus={scrollFieldIntoView}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -569,6 +609,7 @@ export default function CustomListOrderPage() {
                     placeholder="06XXXXXXXX"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    onFocus={scrollFieldIntoView}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm text-right focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
@@ -584,6 +625,7 @@ export default function CustomListOrderPage() {
                   placeholder="الولاية، البلدية، والحي"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
+                  onFocus={scrollFieldIntoView}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
