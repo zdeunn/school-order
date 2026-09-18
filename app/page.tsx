@@ -323,11 +323,10 @@ export default function CustomListOrderPage() {
     }
   };
 
-  // إضافة عنصر جديد فارغ في نهاية القائمة عبر أيقونة "+"
+  // إضافة عنصر جديد فارغ في بداية القائمة (أعلى العناصر الحالية) عبر أيقونة "+"
   const handleAddEmptyItem = () => {
-    const newIndex = items.length;
-    setItems((prev) => [...prev, { name: "", quantity: 1 }]);
-    setPendingFocusIndex(newIndex);
+    setItems((prev) => [{ name: "", quantity: 1 }, ...prev]);
+    setPendingFocusIndex(0);
   };
 
   const handleQuantityChange = (index: number, newQty: number) => {
@@ -521,24 +520,13 @@ export default function CustomListOrderPage() {
                 <ListCheck className="w-5 h-5 text-indigo-600" />
                 <span className="font-bold text-base sm:text-lg">مراجعة وتعديل قائمة المنتجات</span>
               </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleAddEmptyItem}
-                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" /> إضافة منتج
-                </button>
-                {items.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearAllItems}
-                    className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> تفريغ الكل
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={handleAddEmptyItem}
+                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> إضافة منتج
+              </button>
             </div>
 
             {items.length > 0 && (
@@ -611,6 +599,18 @@ export default function CustomListOrderPage() {
                 />
               </div>
               <p className="text-[11px] text-slate-400">💡 اكتب اسم المنتج والعدد ثم اضغط <b>Enter</b> للإضافة المباشرة للقائمة.</p>
+
+              {items.length > 0 && (
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleClearAllItems}
+                    className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> تفريغ الكل
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
